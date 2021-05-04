@@ -1,6 +1,6 @@
 
 /*
-更新时间: 2021-02-18 11:15
+更新时间: 2021-03-22 21:30
 
 腾讯新闻签到修改版，可以自动阅读文章获取红包，该活动为瓜分百万现金挑战赛，针对幸运用户参与，本脚本已不能自动打开红包，需每天要打开腾讯新闻app一次，请须知
 
@@ -13,6 +13,7 @@ let SignArr = [],SignUrl = "";
     cookiesArr = [],CookieTxnews = "";
     VideoArr = [],SignUrl = "",order = "",
     detail = ``, subTitle = ``;
+    prizeArr = [],prizeUrl= "";
 let read_finish = "",video_finish="";
 if ($.isNode()) {
     if (process.env.TXNEWS_COOKIE && process.env.TXNEWS_COOKIE.indexOf('&') > -1) {
@@ -48,7 +49,8 @@ if ($.isNode()) {
 } else {
     cookiesArr.push($.getdata('sy_cookie_txnews'));
     SignArr.push($.getdata('sy_signurl_txnews'));
-    VideoArr.push($.getdata('video_txnews'))
+    VideoArr.push($.getdata('video_txnews'));
+    prizeArr.push($.getdata('prize_txnews'))
 }
 
 let isGetCookie = typeof $request !== 'undefined'
@@ -76,11 +78,14 @@ if (isGetCookie) {
             cookieVal = cookiesArr[i];
             signurlVal = SignArr[i];
             videoVal = VideoArr[i];
+            prizeVal = prizeArr[i] 
             $.index = i + 1;
             console.log(`-------------------------\n\n开始【腾讯新闻账号${$.index}】`)
-            ID = signurlVal.match(/devid=[a-zA-Z0-9_-]+/g)[0]
+            ID = signurlVal.match(/devid=([a-zA-Z0-9_-]+)/)[1]
             token = signurlVal.split("mac")[1]
             await getsign();
+            prizeVal?await open():"";
+            prizeVal?await treesign():"";
             await activity();
             await getTotal();
             await $.wait(1000);
@@ -99,7 +104,12 @@ if (isGetCookie) {
 
 
 function GetCookie() {
-    if ($request && $request.body.indexOf("article_read") > -1) {
+    if ($request && $request.url.indexOf("api.prize.qq.com") > -1) {
+        const prizeVal = $request.url
+        $.log(`prizeVal:${prizeVal}`)
+        if (prizeVal) $.setdata(prizeVal, 'prize_txnews')
+        $.msg($.name, `获取天天领红包地址: 成功🎉`, ``)
+    } else if ($request && $request.body.indexOf("article_read") > -1) {
         const signurlVal = $request.url
         const cookieVal = $request.headers['Cookie'];
         $.log(`signurlVal:${signurlVal}`)
@@ -108,7 +118,7 @@ function GetCookie() {
         if (cookieVal) $.setdata(cookieVal, 'sy_cookie_txnews')
         $.msg($.name, `获取Cookie: 成功🎉`, ``)
     }
-    if ($request && $request.body.indexOf("video_read") > -1) {
+    else if ($request && $request.body.indexOf("video_read") > -1) {
         const videoVal = $request.url
         $.log(`videoVal:${videoVal}`)
         if (videoVal) $.setdata(videoVal, 'video_txnews')
@@ -118,7 +128,7 @@ function GetCookie() {
 
 function Host(api, body, taskurl) {
     return {
-        url: 'https://api.inews.qq.com/activity/v1/' + api + '&isJailbreak=0&' + ID,
+        url: 'https://api.inews.qq.com/activity/v1/' + api + '&isJailbreak=0&devid=' + ID,
         headers: {
             'Accept': '*/*',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -129,7 +139,7 @@ function Host(api, body, taskurl) {
             'Referer': taskurl,
             'store': '1',
             'devid': ID,
-            'User-Agent': 'QQNews/6.4.10 (iPhone; iOS 14.2; Scale/3.00)'
+            'User-Agent': 'QQNews/6.4.40 (iPhone; iOS 14.2; Scale/3.00)'
         },
         body: body
     }
@@ -161,6 +171,79 @@ function getsign() {
     })
 }
 
+function open() {
+ return new Promise((resolve, reject) => {
+ let url = {
+     url: prizeVal,
+     headers: Host().headers,
+     body: "actname=chajian_shouqi"
+ };
+     url.headers['Referer'] = 'http://inews.qq.com/inews/iphone/';
+     url.headers['Host'] = 'api.prize.qq.com';
+ $.post(url, async(error, resp, data) => {
+     if(resp.statusCode ==200){
+       obj = JSON.parse(data);
+       if(obj.code==0){
+         amount = obj.data.type=="rp" ? "天天领红包获得"+obj.data.amount/100+"元": "天天领红包获得"+obj.data.amount+"个金币"
+         $.log(amount);
+         $.msg($.name, amount,"");
+         await zhuli()
+       }
+     } else if(resp.statusCode !== 403){
+       $.log(JSON.stringify(resp,null,2))
+     }
+     resolve()
+    })
+  })
+}
+
+function zhuli() {
+ return new Promise((resolve, reject) => {
+    treetoken = prizeVal.split("?")[1]
+ let url = {
+     url: 'https://api.prize.qq.com/v1/newsapp/rpinvite/zhuli?actname=hongbaozhongxinyaoqing&activefrom=invitetask&'+treetoken,
+     headers: Host().headers,
+     body: "inviter_openid=17A2385EE6D27888DB9F9D6B0BE90EEA&source=main"
+ };
+     url.headers['Referer'] = 'http://inews.qq.com/inews/iphone/';
+     url.headers['Host'] = 'api.prize.qq.com';
+ $.post(url, (error, resp, data) => {
+     if(resp.statusCode ==200){
+       obj=JSON.parse(data);
+       if(obj.code==0){
+         //$.log(obj.message)
+       }
+      }
+      resolve()
+     })
+   })
+}
+function treesign() {
+ return new Promise((resolve, reject) => {
+  treetoken = prizeVal.split("?")[1]
+ let url = {
+     url: 'https://api.prize.qq.com/v1/newsapp/tree/sign?'+treetoken,
+     headers: Host().headers,
+     body: "current_day="+Math.round(new Date(new Date().toLocaleDateString()).getTime()/1000).toString()
+ }
+ $.post(url, (error, resp, data) => {
+     if(resp.statusCode ==200){
+       obj = JSON.parse(data);
+       if(obj.code==0){
+         amount = obj.data.prize_type=="10" ? "摇钱树签到"+obj.data.prize_num+"经验": "摇钱树签到获得收益"+obj.data.prize_num
+         $.log(data)
+         $.msg($.name, amount,"")
+       }
+     } else if(resp.statusCode !== 403){
+       $.log(JSON.stringify(resp,null,2))
+     }
+     resolve()
+    })
+  })
+}
+
+
+
 function activity() {
     return new Promise((resolve, reject) => {
         $.get(Host('user/task/list?'), async(error, resp, data) => {
@@ -171,8 +254,10 @@ function activity() {
                     actid = taskres.data.award_notice.activity_id;
                     if (!actid) {
                         actid = $.getdata('txnews_id')
-                    }
+                    } else {
                     $.log(`\n您的活动ID为: ` + actid + "\n\n********* 开始阅读任务 ********\n");
+                $.setdata(actid,"txnews_id")
+                    }
                     $.desc = ""
                     for (tasks of taskres.data.list) {
                         taskname = tasks.task_title,
@@ -305,7 +390,7 @@ function StepsTotal() {
 //阶梯红包到账
 function Redpack(red_body) {
     return new Promise((resolve, reject) => {
-        $.post(Host('activity/redpack/get?', `redpack_type=${red_body}&activity_id=${actid}`), (error, resp, data) => {
+        $.post(Host('activity/redpack/get?', `redpack_type=${red_body}&activity_id=${actid}`,'http://inews.qq.com/inews/iphone/'), (error, resp, data) => {
             let rcash = JSON.parse(data);
             try {
                 if (rcash.data.award.length == 1) {
